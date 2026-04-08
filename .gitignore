@@ -1,0 +1,5 @@
+.env
+*.log
+bridge_offset.json
+__pycache__/
+*.pyc

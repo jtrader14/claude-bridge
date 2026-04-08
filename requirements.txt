@@ -1,0 +1,4 @@
+flask
+requests
+python-dotenv
+openai-whisper  # opcional: solo si quieres notas de voz
