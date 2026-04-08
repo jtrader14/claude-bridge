@@ -1,6 +1,6 @@
 @echo off
 echo === Claude Bridge ===
-echo Iniciando proxy, bridge y listener...
+echo Starting proxy, bridge and listener...
 echo.
 
 start "Proxy" cmd /k "cd %~dp0 && python proxy.py"
@@ -12,4 +12,4 @@ timeout /t 2 /nobreak >nul
 start "Listener" cmd /k "cd %~dp0 && python autolistener.py"
 
 echo.
-echo Todo iniciado. Envia "claude: tu tarea" en Telegram.
+echo All started. Send "claude: your task" on Telegram.

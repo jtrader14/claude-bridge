@@ -1,12 +1,13 @@
 """
 Claude Bridge Auto-Listener
 =============================
-Long-polls el proxy continuamente. Cuando llega una tarea,
-la ejecuta via Claude Code CLI y envia la respuesta a Telegram.
+Continuously long-polls the proxy for messages from Telegram.
+When a task arrives, executes it via Claude Code CLI and sends
+the response back to Telegram.
 
-Uso:
-  python autolistener.py          # Iniciar listener
-  python autolistener.py --test   # Probar con mensaje de prueba
+Usage:
+  python autolistener.py          # Start listener
+  python autolistener.py --test   # Test with a sample message
 """
 
 import json
@@ -23,7 +24,7 @@ load_dotenv()
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-# === CONFIGURACION (desde .env) ===
+# === CONFIG (from .env) ===
 PROXY_URL = f"http://localhost:{os.getenv('PROXY_PORT', '5055')}"
 POLL_TIMEOUT = 90
 
@@ -31,17 +32,17 @@ TELEGRAM_BOT = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # Claude Code CLI
-# Windows: buscar con "where claude" → usar la ruta .cmd
-# Linux/Mac: normalmente solo "claude"
+# Windows: find with "where claude" — use the .cmd path
+# Linux/Mac: usually just "claude"
 CLAUDE_CMD = os.getenv("CLAUDE_CMD", "claude")
-CLAUDE_TIMEOUT = 300  # 5 min max por tarea
+CLAUDE_TIMEOUT = 300  # 5 min max per task
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "autolistener.log")
 
-# Verificar configuracion
+# Validate config
 if not TELEGRAM_BOT or not TELEGRAM_CHAT:
-    print("ERROR: Configurar TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env")
-    print("Ver .env.example para referencia")
+    print("ERROR: Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env")
+    print("See .env.example for reference")
     sys.exit(1)
 
 
@@ -57,7 +58,7 @@ def log(msg):
 
 
 def send_telegram(text, parse_mode="HTML"):
-    """Enviar respuesta a Telegram."""
+    """Send response back to Telegram."""
     try:
         chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
         for chunk in chunks:
@@ -67,7 +68,7 @@ def send_telegram(text, parse_mode="HTML"):
                 timeout=10,
             )
             if not resp.ok:
-                # Reintentar sin parse_mode si falla el HTML
+                # Retry without parse_mode if HTML fails
                 requests.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT}/sendMessage",
                     json={"chat_id": TELEGRAM_CHAT, "text": chunk},
@@ -78,16 +79,16 @@ def send_telegram(text, parse_mode="HTML"):
 
 
 def mark_done(msg_id, result):
-    """Marcar tarea como completada en el proxy."""
+    """Mark task as done on the proxy."""
     try:
         requests.post(f"{PROXY_URL}/done/{msg_id}", json={"result": result[:500]}, timeout=10)
     except Exception as e:
-        log(f"Error marcando done: {e}")
+        log(f"Mark done error: {e}")
 
 
 def execute_with_claude(prompt):
-    """Ejecutar prompt via Claude Code CLI y retornar la respuesta."""
-    log(f"Ejecutando via Claude CLI: {prompt[:100]}")
+    """Run a prompt through Claude Code CLI and return the response."""
+    log(f"Executing via Claude CLI: {prompt[:100]}")
 
     try:
         result = subprocess.run(
@@ -107,18 +108,18 @@ def execute_with_claude(prompt):
             return f"Error (exit {result.returncode}): {error[:500]}"
 
         if not output and error:
-            return f"Sin output. Stderr: {error[:500]}"
+            return f"No output. Stderr: {error[:500]}"
 
-        return output if output else "Tarea completada (sin output)."
+        return output if output else "Task completed (no output)."
 
     except subprocess.TimeoutExpired:
-        return "Timeout: la tarea tardo mas de 5 minutos."
+        return "Task timed out after 5 minutes."
     except Exception as e:
-        return f"Error de ejecucion: {str(e)}"
+        return f"Execution error: {str(e)}"
 
 
 def poll_and_execute():
-    """Un ciclo: esperar mensaje, ejecutar, responder."""
+    """Single poll cycle: wait for message, execute, respond."""
     try:
         resp = requests.get(
             f"{PROXY_URL}/wait",
@@ -130,7 +131,7 @@ def poll_and_execute():
             return False
 
         if resp.status_code != 200:
-            log(f"Proxy retorno {resp.status_code}")
+            log(f"Proxy returned {resp.status_code}")
             return False
 
         msg = resp.json()
@@ -142,44 +143,44 @@ def poll_and_execute():
         source = msg.get("source", "unknown")
 
         if not prompt:
-            log("Prompt vacio, saltando")
-            mark_done(msg_id, "saltado - prompt vacio")
+            log("Empty prompt, skipping")
+            mark_done(msg_id, "skipped - empty prompt")
             return True
 
-        log(f">>> Tarea de {source}: {prompt[:120]}")
+        log(f">>> Task from {source}: {prompt[:120]}")
 
-        # Notificar que estamos trabajando
-        send_telegram(f"<b>Procesando...</b>\n\n<i>{prompt[:200]}</i>")
+        # Notify user we're working on it
+        send_telegram(f"<b>Processing...</b>\n\n<i>{prompt[:200]}</i>")
 
-        # Ejecutar via Claude Code
+        # Execute via Claude Code
         response = execute_with_claude(prompt)
 
-        # Enviar resultado a Telegram
+        # Send result back to Telegram
         send_telegram(f"<b>Claude</b>\n\n{response}")
 
-        # Marcar como completado en el proxy
+        # Mark as completed on the proxy
         summary = response[:200] if len(response) <= 200 else response[:197] + "..."
         mark_done(msg_id, summary)
 
-        log(f"<<< Listo: {summary[:100]}")
+        log(f"<<< Done: {summary[:100]}")
         return True
 
     except requests.exceptions.Timeout:
         return False
     except requests.exceptions.ConnectionError:
-        log("Proxy no disponible — esta corriendo proxy.py?")
+        log("Proxy unavailable — is proxy.py running?")
         time.sleep(5)
         return False
     except Exception as e:
-        log(f"Error en poll: {e}")
+        log(f"Poll error: {e}")
         time.sleep(2)
         return False
 
 
 def run_listener():
-    """Loop principal — escuchar mensajes continuamente."""
+    """Main loop — continuously listen for messages."""
     log("=" * 50)
-    log("Claude Bridge Auto-Listener INICIADO")
+    log("Claude Bridge Auto-Listener STARTED")
     log(f"Proxy: {PROXY_URL}")
     log(f"Poll timeout: {POLL_TIMEOUT}s")
     log(f"Claude timeout: {CLAUDE_TIMEOUT}s")
@@ -188,9 +189,9 @@ def run_listener():
 
     send_telegram(
         "<b>Auto-Listener ONLINE</b>\n\n"
-        "Envia <code>claude: tu tarea</code> y recibiras "
-        "la respuesta automaticamente.\n\n"
-        "No necesitas /listen manual."
+        "Send <code>claude: your task</code> and you'll get "
+        "the response automatically.\n\n"
+        "No manual /listen needed."
     )
 
     consecutive_errors = 0
@@ -202,14 +203,14 @@ def run_listener():
                 consecutive_errors = 0
 
         except KeyboardInterrupt:
-            log("Cerrando...")
+            log("Shutting down...")
             send_telegram("<b>Auto-Listener OFFLINE</b>")
             break
         except Exception as e:
             consecutive_errors += 1
-            log(f"Error en loop: {e}")
+            log(f"Main loop error: {e}")
             if consecutive_errors > 10:
-                log("Demasiados errores consecutivos, esperando 30s")
+                log("Too many consecutive errors, backing off 30s")
                 time.sleep(30)
                 consecutive_errors = 0
             else:
@@ -218,17 +219,17 @@ def run_listener():
 
 if __name__ == "__main__":
     if "--test" in sys.argv:
-        log("Enviando mensaje de prueba al proxy...")
+        log("Sending test message to proxy...")
         try:
             resp = requests.post(
                 f"{PROXY_URL}/message",
                 json={"prompt": "say hello and tell me today's date", "source": "test"},
                 timeout=5,
             )
-            log(f"Mensaje enviado: {resp.json()}")
-            log("Escuchando respuesta...")
+            log(f"Test message sent: {resp.json()}")
+            log("Listening for response...")
             poll_and_execute()
         except Exception as e:
-            log(f"Test fallo: {e}")
+            log(f"Test failed: {e}")
     else:
         run_listener()

@@ -1,17 +1,17 @@
 """
 Claude Bridge Proxy
 ====================
-Servidor HTTP que recibe tareas y las sirve a Claude Code via long-polling.
+HTTP server that receives tasks and serves them to Claude Code via long-polling.
 
 Endpoints:
-  POST /message        — Enviar tarea
-  GET  /wait           — Claude Code espera aqui (long-poll)
-  POST /done/<id>      — Marcar tarea como completada
-  GET  /messages       — Listar tareas pendientes
+  POST /message        — Submit a task
+  GET  /wait           — Claude Code waits here (long-poll)
+  POST /done/<id>      — Mark task as completed
+  GET  /messages       — List pending tasks
   GET  /health         — Health check
 
-Uso: python proxy.py
-Puerto: 5055
+Usage: python proxy.py
+Port: 5055
 """
 
 import json
@@ -42,7 +42,7 @@ def health():
 
 @app.route('/message', methods=['POST'])
 def receive_message():
-    """Recibir tarea desde bridge/Gemma."""
+    """Receive a task from bridge/Telegram."""
     data = request.get_json()
     prompt = data.get('prompt', data.get('text', ''))
     source = data.get('source', 'telegram')
@@ -63,13 +63,13 @@ def receive_message():
         messages.append(msg)
 
     new_message_event.set()
-    print(f"[{msg['created']}] Nueva tarea de {source}: {prompt[:80]}")
+    print(f"[{msg['created']}] New task from {source}: {prompt[:80]}")
     return jsonify({'ok': True, 'id': msg['id']})
 
 
 @app.route('/wait')
 def wait_for_message():
-    """Long-poll: bloquea hasta que llega un mensaje o timeout."""
+    """Long-poll: blocks until a message arrives or timeout."""
     timeout = int(request.args.get('timeout', 90))
 
     with message_lock:
@@ -95,7 +95,7 @@ def wait_for_message():
 
 @app.route('/done/<msg_id>', methods=['POST'])
 def mark_done(msg_id):
-    """Marcar tarea como completada con resultado."""
+    """Mark a task as completed with result."""
     data = request.get_json() or {}
     result = data.get('result', 'done')
 
@@ -107,7 +107,7 @@ def mark_done(msg_id):
                 m['completed'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 history.append(m)
                 messages.pop(i)
-                print(f"[{m['completed']}] Completado: {m['prompt'][:60]}")
+                print(f"[{m['completed']}] Completed: {m['prompt'][:60]}")
                 return jsonify({'ok': True})
 
     return jsonify({'error': 'not found'}), 404
@@ -115,7 +115,7 @@ def mark_done(msg_id):
 
 @app.route('/messages')
 def list_messages():
-    """Listar tareas pendientes."""
+    """List pending tasks."""
     with message_lock:
         pending = [m for m in messages if m['status'] in ('pending', 'processing')]
     return jsonify(pending)
@@ -123,12 +123,12 @@ def list_messages():
 
 @app.route('/history')
 def list_history():
-    """Listar tareas completadas (ultimas 20)."""
+    """List completed tasks (last 20)."""
     return jsonify(history[-20:])
 
 
 if __name__ == '__main__':
-    print(f"Claude Bridge Proxy en http://localhost:{PROXY_PORT}")
-    print("Enviar tarea:  POST /message")
-    print("Claude espera: GET  /wait")
+    print(f"Claude Bridge Proxy running at http://localhost:{PROXY_PORT}")
+    print("Submit task:   POST /message")
+    print("Claude waits:  GET  /wait")
     app.run(host='0.0.0.0', port=PROXY_PORT, debug=False, threaded=True)

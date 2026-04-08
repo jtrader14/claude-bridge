@@ -1,4 +1,4 @@
 flask
 requests
 python-dotenv
-openai-whisper  # opcional: solo si quieres notas de voz
+openai-whisper  # optional: only needed for voice notes
