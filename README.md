@@ -1,6 +1,6 @@
 # Claude Bridge
 
-**Control Claude Code from your phone via Telegram. $200/mo flat — no metered API.**
+**Control Claude Code from your phone via Telegram. no metered API.**
 
 An alternative to connecting OpenClaw (or any Telegram-based AI agent) to Claude Code without using the Claude API. After Anthropic's April 4 billing change, running OpenClaw through the API can cost $1,000–$5,000/month. This bridge routes everything through Claude Code CLI, which is still covered by the $200/mo Max subscription.
 
